@@ -30,3 +30,5 @@
 *.exe
 *.out
 *.app
+x64/
+_LOG/SERVER/SERVER_20201003.txt

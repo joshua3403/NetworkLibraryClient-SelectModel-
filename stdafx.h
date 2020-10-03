@@ -25,3 +25,4 @@
 #include <crtdbg.h>
 #include <psapi.h>
 #include <DbgHelp.h>
+#include <tchar.h>

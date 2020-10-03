@@ -36,7 +36,7 @@ namespace joshua
 
 	struct st_SESSION
 	{
-		int index;
+		BOOL IsConnected;
 		UINT64 SessionID;
 		SOCKET socket;
 		SOCKADDR_IN clientaddr;
@@ -46,6 +46,9 @@ namespace joshua
 		OVERLAPPED RecvOverlapped;
 		LONG bIsSend;
 		st_SESSION_FLAG* lIO;
+		int index;
+
+		DWORD dwRecvTime;
 
 		DWORD dwPacketCount;
 		std::list<CMessage*> lMessageList;
@@ -67,6 +70,7 @@ namespace joshua
 			lIO = (st_SESSION_FLAG*)_aligned_malloc(sizeof(st_SESSION_FLAG), 16);
 			lIO->bIsReleased = FALSE;
 			lIO->lIOCount = 0;
+			IsConnected = FALSE;
 		}
 
 		~st_SESSION()
@@ -99,19 +103,22 @@ namespace joshua
 		// Session
 		SOCKADDR_IN _serveraddr;
 		UINT64 _dwSessionID;
-		std::vector<st_SESSION> _SessionArray;
-		std::vector<SOCKET> _SocketArray;
-		std::stack<UINT64> _ArrayIndex;
+		std::map<SOCKET, st_SESSION*> _SessionArray;
+		std::list<SOCKET> _SocketArray;
 		SRWLOCK _SessionLock;
+		SRWLOCK _IndexLock;
 
 		LONG64 _lSendTPS;
 		LONG64 _lRecvTPS;
-		LONG64 _lAcceptTPS;
-		LONG64 _lAcceptCount;
+		LONG64 _lConnectTPS;
+		LONG64 _lConnectCount;
+		LONG64 _lConnectFailCount;
+
 
 		WCHAR _szIPInput[32];
 		UINT64 _ClientCount;
 
+		timeval _SelectTime;
 
 	private:
 		// 소켓 초기화
@@ -119,25 +126,25 @@ namespace joshua
 		// 스레드 생성
 		// 0이면 프로세서 * 2
 		BOOL CreateThread(DWORD threadCount);
-		// 세션 할당 및 생성
-		BOOL CreateSession();
 
-		void PushIndex(UINT64 index);
+		void CreateNewSocket();
 
-		UINT64 PopIndex();
+		//void PushIndex(UINT64 index);
+
+		//UINT64 PopIndex();
 
 		// 빈 세션 공간에 새로 생성된 세션 세팅
 		st_SESSION* InsertSession(SOCKET sock, SOCKADDR_IN* sockaddr);
 
 		// Accept를 전담할 스레드의 시작 함수
-		static unsigned int WINAPI AcceptThread(LPVOID lpParam);
+		static unsigned int WINAPI ConnectThread(LPVOID lpParam);
 		static unsigned int WINAPI WorkerThread(LPVOID lpParam);
 
-		void AcceptThread(void);
+		void ConnectThread(void);
 		void WorkerThread(void);
 
-		bool PostSend(st_SESSION* session);
-		bool PostRecv(st_SESSION* session);
+		bool PostSend(SOCKET sock);
+		bool PostRecv(SOCKET sock);
 
 		void SessionRelease(st_SESSION* session);
 		void DisconnectSocket(SOCKET sock);
@@ -151,6 +158,12 @@ namespace joshua
 		void CreateSocket();
 
 		void ConnectToServer();
+
+		void SelectConnect(SOCKET* pTableSocket, FD_SET* pWriteSet, FD_SET* pErrorSet);
+
+		void SelectSocket(SOCKET* pTableSocket, FD_SET* pReadSet, FD_SET* pWriteSet);
+
+		st_SESSION* FindSession(SOCKET sock);
 
 	protected:
 		// Accept후 접속 처리 완료후 호출하는 함수
@@ -186,9 +199,12 @@ namespace joshua
 			_iThreadCount = 0;
 			_lSendTPS = 0;
 			_lRecvTPS = 0;
-			_lAcceptTPS = 0;
-			_lAcceptCount = 0;
+			_lConnectTPS = 0;
+			_lConnectCount = 0;
 			InitializeSRWLock(&_SessionLock);
+			InitializeSRWLock(&_IndexLock);
+
+			_SelectTime = { 0, 300000 };
 		}
 		
 		~NetworkLibrary()
